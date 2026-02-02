@@ -1,0 +1,32 @@
+
+
+.device-block {
+  height: 100vh;
+  width: 100vw;
+  background: #0b0f1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-family: system-ui, sans-serif;
+}
+
+.device-card {
+  background: #12172a;
+  padding: 32px 36px;
+  border-radius: 12px;
+  text-align: center;
+  max-width: 320px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+}
+
+.device-card h1 {
+  font-size: 22px;
+  margin-bottom: 12px;
+}
+
+.device-card p {
+  font-size: 14px;
+  color: #b0b6d1;
+  margin: 6px 0;
+}
