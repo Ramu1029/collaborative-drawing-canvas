@@ -7,7 +7,7 @@ type Point = { x: number; y: number };
 const BATCH_INTERVAL = 40;
 const MAX_POINTS = 8;
 
-export function Canvas() {
+export function Canvas({ username }: { username?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const drawing = useRef(false);
@@ -48,9 +48,21 @@ export function Canvas() {
       const { strokeId, points, color, width } = data;
 
       const existing = strokeMap.current.get(strokeId) || [];
-      strokeMap.current.set(strokeId, [...existing, ...points]);
+      // draw incremental segments: if there is an existing last point, draw
+      // a segment from it to the first incoming point, then draw any
+      // additional points in the batch.
+      if (existing.length > 0 && points.length > 0) {
+        const last = existing[existing.length - 1];
+        // draw segment from last existing to first new
+        drawStroke(ctx, [last, points[0]], color, width);
+      }
 
-      drawStroke(ctx, points, color, width);
+      if (points.length > 1) {
+        // draw remaining points in batch
+        drawStroke(ctx, points, color, width);
+      }
+
+      strokeMap.current.set(strokeId, [...existing, ...points]);
     }
 
     function handleRoomInit({ strokes }: any) {
@@ -103,6 +115,7 @@ export function Canvas() {
       strokeId: currentStrokeId.current,
       userId: userId.current,
       points: [...pendingPoints.current],
+      username: username || null,
       color: strokeColor,
       width,
     });
@@ -143,6 +156,7 @@ export function Canvas() {
     socket.emit("cursor-move", {
       roomId: "abc",
       userId: userId.current,
+      username: username || null,
       x: point.x,
       y: point.y,
       color: "red",

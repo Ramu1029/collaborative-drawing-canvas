@@ -20,46 +20,71 @@ const roomManager = new RoomManager();
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
-  socket.on("stroke", ({ roomId, strokeId, points, color, width, userId }) => {
-    const room = roomManager.getRoom(roomId);
+  socket.on(
+    "stroke",
+    ({ roomId, strokeId, points, color, width, userId, username }) => {
+      const room = roomManager.getRoom(roomId);
 
-    // FIND existing stroke
-    let stroke = room.strokes.find((s) => s.id === strokeId);
+      // FIND existing stroke
+      let stroke = room.strokes.find((s) => s.id === strokeId);
 
-    if (!stroke) {
-      // first batch of this stroke
-      stroke = {
-        id: strokeId,
+      if (!stroke) {
+        // first batch of this stroke
+        stroke = {
+          id: strokeId,
+          userId,
+          color,
+          width,
+          points: [],
+          createdAt: Date.now(),
+        };
+        room.strokes.push(stroke);
+      }
+
+      // merge batches into ONE stroke
+      stroke.points.push(...points);
+
+      // include username for consumers; prefer provided username or socket-stored username
+      const senderName = username || (socket.data as any).username || null;
+
+      socket.to(roomId).emit("stroke", {
+        strokeId,
         userId,
+        username: senderName,
+        points,
         color,
         width,
-        points: [],
-        createdAt: Date.now(),
-      };
-      room.strokes.push(stroke);
-    }
+      });
+    },
+  );
 
-    // merge batches into ONE stroke
-    stroke.points.push(...points);
-
-    socket.to(roomId).emit("stroke", {
-      strokeId,
-      userId,
-      points,
-      color,
-      width,
-    });
-  });
-
-  socket.on("join-room", ({ roomId }) => {
+  socket.on("join-room", ({ roomId, username }) => {
     socket.join(roomId);
+    // store username on socket for later events
+    (socket.data as any).username = username;
 
     const room = roomManager.getRoom(roomId);
 
-    // Send existing strokes to new user
-    socket.emit("room-init", { strokes: room.strokes });
+    // build list of existing users in room
+    const users: Array<{ userId: string; username: string | null }> = [];
+    const s = io.sockets.adapter.rooms.get(roomId);
+    if (s) {
+      for (const id of s) {
+        const sock = io.sockets.sockets.get(id);
+        users.push({
+          userId: id,
+          username: (sock?.data as any)?.username || null,
+        });
+      }
+    }
 
-    console.log(`${socket.id} joined room ${roomId}`);
+    // Send existing strokes and users to new user
+    socket.emit("room-init", { strokes: room.strokes, users });
+
+    // notify other room members that a user joined
+    socket.to(roomId).emit("user-joined", { userId: socket.id, username });
+
+    console.log(`${socket.id} joined room ${roomId} as ${username}`);
     console.log("sending strokes:", room.strokes.length);
   });
 
@@ -85,9 +110,11 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("cursor-move", ({ roomId, userId, x, y, color }) => {
+  socket.on("cursor-move", ({ roomId, userId, x, y, color, username }) => {
+    const senderName = username || (socket.data as any).username || null;
     socket.to(roomId).emit("cursor-move", {
       userId,
+      username: senderName,
       x,
       y,
       color,
@@ -96,7 +123,11 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
-    socket.broadcast.emit("cursor-leave", { userId: socket.id });
+    // inform rooms this socket was part of
+    for (const roomId of socket.rooms) {
+      if (roomId === socket.id) continue;
+      io.to(roomId).emit("user-left", { userId: socket.id });
+    }
   });
 });
 

@@ -15,6 +15,7 @@ type Cursor = {
   x: number;
   y: number;
   color: string;
+  username?: string | null;
 };
 
 (window as any).socket = socket;
@@ -23,6 +24,7 @@ export function Room() {
   const roomId = "abc";
   const [username, setUsername] = useState<string | null>(null);
   const [cursors, setCursors] = useState<Record<string, Cursor>>({});
+  const [users, setUsers] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
     if (!username) return; // only connect after username is set
@@ -37,6 +39,26 @@ export function Room() {
       }));
     });
 
+    socket.on("room-init", ({ users: initialUsers }: any) => {
+      if (initialUsers && Array.isArray(initialUsers)) {
+        const map: Record<string, string | null> = {};
+        initialUsers.forEach((u: any) => (map[u.userId] = u.username));
+        setUsers(map);
+      }
+    });
+
+    socket.on("user-joined", ({ userId, username }) => {
+      setUsers((prev) => ({ ...prev, [userId]: username }));
+    });
+
+    socket.on("user-left", ({ userId }) => {
+      setUsers((prev) => {
+        const copy = { ...prev };
+        delete copy[userId];
+        return copy;
+      });
+    });
+
     socket.on("cursor-leave", ({ userId }) => {
       setCursors((prev) => {
         const copy = { ...prev };
@@ -48,6 +70,9 @@ export function Room() {
     return () => {
       socket.off("cursor-move");
       socket.off("cursor-leave");
+      socket.off("room-init");
+      socket.off("user-joined");
+      socket.off("user-left");
     };
   }, [username]);
 
@@ -65,7 +90,7 @@ export function Room() {
           <LeftToolbar />
 
           <div className="canvas-wrapper">
-            <Canvas />
+            <Canvas username={username ?? undefined} />
 
             <div className="cursor-layer">
               {Object.values(cursors).map((c) => (
@@ -86,7 +111,7 @@ export function Room() {
             </div>
           </div>
 
-          <RightPanel />
+          <RightPanel users={users} localUsername={username} />
         </div>
 
         <BottomPalette />
